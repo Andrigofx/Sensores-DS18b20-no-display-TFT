@@ -1,22 +1,28 @@
-//Sketch para monitoramento de sensores de temperatura DS18B20 com display TFT
-//Desenvolvido por Andrigo Farias Xavier
-//Laboratório de Agrotecnologia - UFPEL
-//Modificado em 09/01/2025
+// Sketch para monitoramento de sensores de temperatura DS18B20 e SHT20 com display TFT
+// Desenvolvido por Andrigo Farias Xavier e Rita Monteiro
+// Laboratório de Agrotecnologia - UFPEL
+// Modificado em 07/02/2025
 
-#include <Adafruit_GFX.h>    // Biblioteca Core graphics 
-#include <MCUFRIEND_kbv.h>      
-#include <OneWire.h>
-#include <DallasTemperature.h>   // Biblioteca sensores
+            
+#include "DFRobot_SHT20.h"    // Biblioteca para sensor SHT20
+#include <Adafruit_GFX.h>     // Biblioteca Core graphics
+#include <MCUFRIEND_kbv.h>
+#include <OneWire.h>           // Biblioteca para comunicação I2C
+#include <DallasTemperature.h>
 
-#define ONE_WIRE_BUS 2  // Pino onde os sensores serao conectados
+#define ONE_WIRE_BUS 2  // Pino onde os sensores DS18B20 serão conectados
+#define LED_VERDE 8     // Pino do LED verde
+#define LED_AMARELO 9   // Pino do LED amarelo
+#define LED_VERMELHO 10 // Pino do LED vermelho
+#define BUZZER 11       // Pino do buzzer
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-DeviceAddress sensor1, sensor2, sensor3 ;
+DeviceAddress sensor1, sensor2, sensor3, sensor4;
+DFRobot_SHT20 sht20;
 
 MCUFRIEND_kbv tft;
 
-// Atribua nomes legíveis a alguns valores de cores comuns de 16 bits:
 #define BLACK   0x0000
 #define BLUE    0x001F
 #define RED     0xF800
@@ -26,59 +32,37 @@ MCUFRIEND_kbv tft;
 #define YELLOW  0xFFE0
 #define WHITE   0xFFFF
 
-uint16_t g_identifier;
-
 void setup(void) {
   Serial.begin(9600);
-  Serial.println(F("TFT LCD test"));
-  
+  Wire.begin();
   tft.reset();
 
-#ifdef USE_OPENSMART_SHIELD_PINOUT
-  Serial.println(F("Using OPENSMART 3.2\" TFT Arduino Shield Pinout"));
-#else
-  Serial.println(F("Using OPENSMART 3.2\" TFT Breakout Board Pinout"));
-#endif
-
-  Serial.print("TFT size is ");
-  Serial.print(tft.width());
-  Serial.print("x");
-  Serial.println(tft.height());
-
-  uint32_t when = millis();
-  if (!Serial) delay(5000);           
-  Serial.println("Serial took " + String((millis() - when)) + "ms to start");
-  
-  g_identifier = tft.readID();
-  Serial.print("ID = 0x");
-  Serial.println(g_identifier, HEX);
-  
-  tft.begin(0x9327); // Para ativar o código do driver ILI9327
+  tft.begin(0x9327);
   tft.setRotation(0);
-
-  // Colocando o plano de fundo na cor preto
   tft.fillScreen(BLACK);
 
-  // Texto estatico da parte de cima
   tft.setTextColor(WHITE);
   tft.setTextSize(3);
   tft.setCursor(3, 0);
   tft.println("LAB. AGROTEC.");
-
   tft.setTextColor(YELLOW);
   tft.setTextSize(2);
   tft.println("   MONITORAMENTO");
-  tft.println("        DE");
-  tft.println("    TEMPERATURA");
-  sensors.begin();
+  tft.println("     DE SECAGEM ");
+  tft.println("      DE GRAOS");
 
-  if (!sensors.getAddress(sensor1, 0)) Serial.println("Unable to find address for Device 0");
-  if (!sensors.getAddress(sensor2, 1)) Serial.println("Unable to find address for Device 1");
-  if (!sensors.getAddress(sensor3, 2)) Serial.println("Unable to find address for Device 2");
- 
-  sensors.setResolution(sensor1, 10);
-  sensors.setResolution(sensor2, 10);
-  sensors.setResolution(sensor3, 10);
+  sensors.begin();
+  if (!sensors.getAddress(sensor1, 0)) Serial.println("Sensor DS18B20 0 nao encontrado");
+  if (!sensors.getAddress(sensor2, 1)) Serial.println("Sensor DS18B20 1 nao encontrado");
+  if (!sensors.getAddress(sensor3, 2)) Serial.println("Sensor DS18B20 2 nao encontrado");
+  if (!sensors.getAddress(sensor4, 3)) Serial.println("Sensor DS18B20 3 nao encontrado");
+
+  sht20.initSHT20();
+  
+  pinMode(LED_VERDE, OUTPUT);
+  pinMode(LED_AMARELO, OUTPUT);
+  pinMode(LED_VERMELHO, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
 }
 
 void loop(void) {
@@ -87,57 +71,74 @@ void loop(void) {
   float temp1 = sensors.getTempC(sensor1);
   float temp2 = sensors.getTempC(sensor2);
   float temp3 = sensors.getTempC(sensor3);
+  float temp4 = sensors.getTempC(sensor4);
 
-  // Atualiza os valores lidos pelos sensores
+  float tempSHT20 = sht20.readTemperature();
+  float umidadeSHT20 = sht20.readHumidity();
+
   tft.fillRect(0, 80, 240, 20, BLACK);
   tft.setCursor(0, 80);
   tft.setTextColor(MAGENTA);
   tft.setTextSize(2);
-  if (temp1 == DEVICE_DISCONNECTED_C) {
-    tft.print("Sensor 1: ERRO");
-  } else {
-    tft.print("Sensor 1: ");
-    tft.print(temp1);
-    tft.println(" C");
-  }
+  tft.print("Sensor 1: "); tft.print(temp1); tft.println(" C");
 
   tft.fillRect(0, 120, 240, 20, BLACK);
   tft.setCursor(0, 120);
-  if (temp2 == DEVICE_DISCONNECTED_C) {
-    tft.print("Sensor 2: ERRO");
-  } else {
-    tft.print("Sensor 2: ");
-    tft.print(temp2);
-    tft.println(" C");
-  }
+  tft.print("Sensor 2: "); tft.print(temp2); tft.println(" C");
 
   tft.fillRect(0, 160, 240, 20, BLACK);
   tft.setCursor(0, 160);
-  if (temp3 == DEVICE_DISCONNECTED_C) {
-    tft.print("Sensor 3: ERRO");
+  tft.print("Sensor 3: "); tft.print(temp3); tft.println(" C");
+
+  tft.fillRect(0, 200, 240, 20, BLACK);
+  tft.setCursor(0, 200);
+  tft.print("Sensor 4: "); tft.print(temp4); tft.println(" C");
+
+  float temperaturas[] = {temp1, temp2, temp3, temp4};
+  bool alerta = false;
+  bool atencao = false;
+
+  for (int i = 0; i < 4; i++) {
+    if (temperaturas[i] > 30.0) alerta = true;
+    else if (temperaturas[i] == 30.0) atencao = true;
+  }
+
+  digitalWrite(LED_VERDE, LOW);
+  digitalWrite(LED_AMARELO, LOW);
+  digitalWrite(LED_VERMELHO, LOW);
+  noTone(BUZZER);
+
+  if (alerta) {
+    digitalWrite(LED_VERMELHO, HIGH);
+    tone(BUZZER, 1000);
+    tft.fillRect(0, 280, 240, 40, BLACK);
+    tft.setCursor(0, 280);
+    tft.setTextColor(RED);
+    tft.setTextSize(2);
+    tft.println("ALERTA TEMPERATURA!");
+    delay(500);
+    digitalWrite(LED_VERMELHO, HIGH);
+    delay(500);
+    digitalWrite(LED_VERMELHO, LOW);
+    noTone(BUZZER);
+    delay(500);
+  } else if (atencao) {
+    digitalWrite(LED_AMARELO, HIGH);
+    delay(500);
+    digitalWrite(LED_AMARELO, LOW);
+    delay(500);
   } else {
-    tft.print("Sensor 3: ");
-    tft.print(temp3);
-    tft.println(" C");
+    digitalWrite(LED_VERDE, HIGH);
+    delay(500);
+    digitalWrite(LED_VERDE, LOW);
+    delay(500);
   }
 
-  // Checar a temperatura e se for maior que a pré estipulada, imprimir o ALERTA
-  tft.fillRect(0, 200, 240, 40, BLACK); // Limpa mensagem anterior
-  tft.setCursor(1, 200);
-  if (temp1 > 30.0 || temp2 > 30.0 || temp3 > 30.0) {
-    tft.setTextColor(RED);
-    tft.setTextSize(2);
-    tft.println("ALERTA TEMPERATURA ");
-  }
+  tft.fillRect(0, 240, 240, 40, BLACK);
+  tft.setCursor(0, 240);
+  tft.setTextColor(CYAN);
+  tft.print("Temp.do ar: "); tft.print(tempSHT20); tft.println(" C");
+  tft.print("Umid.do ar: "); tft.print(umidadeSHT20); tft.println(" %");
 
-  // Checar se algum sensor está desconectado
-  tft.fillRect(0, 250, 240, 40, BLACK); // Limpa mensagem anterior
-  tft.setCursor(1, 250);
-  if (temp1 == DEVICE_DISCONNECTED_C || temp2 == DEVICE_DISCONNECTED_C || temp3 == DEVICE_DISCONNECTED_C) {
-    tft.setTextColor(RED);
-    tft.setTextSize(2);
-    tft.println("ALERTA SENSOR DESC.");
-  }
-
-  delay(1000); // Espera 1 segundo antes de atualizar
+  delay(500);
 }
